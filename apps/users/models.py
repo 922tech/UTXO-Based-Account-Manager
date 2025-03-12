@@ -1,3 +1,4 @@
+import uuid
 from django.contrib.auth import get_user_model
 from django.db import models
 
@@ -9,6 +10,7 @@ User = get_user_model()
 
 class Account(BaseModel):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False)
     private_key = models.TextField()
     public_key = models.TextField()
 
