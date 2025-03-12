@@ -49,9 +49,9 @@ class CommonViewSet(BaseViewSet):
 
 schema_view = get_schema_view(
     openapi.Info(
-        title="AutoML Service API ",
+        title="Blockchain Service API ",
         default_version=settings.REST_FRAMEWORK['DEFAULT_VERSION'],
-        description="Storage API description",
+        description="API description",
     ),
     permission_classes=[permissions.AllowAny, ],
 )

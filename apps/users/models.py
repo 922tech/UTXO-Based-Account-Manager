@@ -19,6 +19,7 @@ class Account(BaseModel):
             key_pair = DigitalSigner.generate_key_pair()
             self.private_key = key_pair['private']
             self.public_key = key_pair['public']
+            print('KEYS set')
 
     def save(self, *args, **kwargs):
         self._handle_defaults()
@@ -31,6 +32,7 @@ class Account(BaseModel):
     def decrypt_private_key(self):
         encryptor = Encryptor()
         self.private_key = encryptor.decrypt(self.private_key)
+        return self.private_key
 
     class Meta:
         ordering = ('-id',)

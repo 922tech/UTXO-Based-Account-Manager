@@ -63,22 +63,3 @@ class SingletonModel(BaseModel):
             instance = cls.objects.create(**kwargs)
         return instance
 
-
-class ConfigSchema(PydanticBaseModel):
-    storage_id: int
-
-    @classmethod
-    def validate_schema(cls, config_dict: dict):
-        return cls.parse_obj(config_dict).model_dump()
-
-
-class Config(SingletonModel):
-    """
-    This model holds the base configurations for the service
-    Due to the frequent changes to this sort of models, the logic is written in a way that does not create a new
-    migration on every change
-    NOTE: for each update the attributes declared on the class. Validation and intelligence should match
-    """
-    storage_id: int
-
-    config = models.JSONField(default=dict, validators=[ConfigSchema.validate_schema])

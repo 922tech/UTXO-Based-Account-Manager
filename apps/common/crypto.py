@@ -25,13 +25,15 @@ class Encryptor:
 
 
 class DigitalSigner:
+    _curve = SECP256k1
 
-    def __init__(self, public_key_hex: str, private_key_hex: str = b''):
+    def __init__(self, public_key_hex: str, private_key_hex: str = ''):
         """
         Initializes KeyUtil with private and public keys in hexadecimal string format.
         """
-        self._private_key = SigningKey.from_string(binascii.unhexlify(private_key_hex), curve=SECP256k1)
-        self._public_key = VerifyingKey.from_string(binascii.unhexlify(public_key_hex), curve=SECP256k1)
+        if private_key_hex:
+            self._private_key = SigningKey.from_string(binascii.unhexlify(private_key_hex), curve=self._curve)
+        self._public_key = VerifyingKey.from_string(binascii.unhexlify(public_key_hex), curve=self._curve)
 
     def sign(self, value: Any) -> str:
         """
@@ -61,12 +63,12 @@ class DigitalSigner:
         except (BadSignatureError, binascii.Error) as e:
             return False
 
-    @staticmethod
-    def generate_key_pair():
+    @classmethod
+    def generate_key_pair(cls):
         """
         Generates a new key pair.
         """
-        private_key = SigningKey.generate(curve=SECP256k1)
+        private_key = SigningKey.generate(curve=cls._curve)
         public_key = private_key.get_verifying_key()
 
         return {

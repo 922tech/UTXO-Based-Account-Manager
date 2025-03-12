@@ -9,7 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 PROJECT_NAME = getenv("PROJECT_NAME", "testproject")
 
 SECRET_KEY = getenv("DJANGO_SECRET_KEY", "this_is_secret!!")
-
+# this key is used for encrypting private keys
 CRYPTO_SECRET = getenv("CRYPTO_SECRET", "NmYeTVb3-5EcEQDRS1Gawkpvihcel5RqJjRufq7eAoo=")
 ADMIN_ACCOUNT_UUID = getenv("ADMIN_ACCOUNT_UUID", "e9301353-cfda-4704-863d-9d93bf4e4ace")
 COINBASE_REWARD = int(getenv("COINBASE_REWARD", "10000000"))
