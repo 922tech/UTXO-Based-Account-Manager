@@ -2,13 +2,15 @@ import shutil
 from django.core.cache import cache
 from django.db import connections
 from rest_framework.reverse import reverse as drf_reverse
+from typing import Callable
+
 from testproject import celery
 
 
 def run_once():
     has_run = False
 
-    def inner(func) -> None:
+    def inner(func) -> Callable:
         def wrapped(*args, **kwargs):
             nonlocal has_run
             if not has_run:
