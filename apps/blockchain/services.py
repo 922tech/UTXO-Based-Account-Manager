@@ -21,6 +21,7 @@ class TxService:
         self.inputs = inputs
         self.outputs = outputs
         self.tx = transaction
+        self.utxos = TxOutput.objects.none()
         if not self.tx:
             self.tx = Transaction()
 
@@ -33,10 +34,9 @@ class TxService:
     @staticmethod
     def verify_input(tx_input: TxInput, public_key: str) -> bool:
         signer = DigitalSigner(public_key_hex=public_key)
-        # breakpoint()
         return signer.verify(tx_input.tx_data, tx_input.script_sig)
 
-    def validate_vouts(self):
+    def validate_transaction(self):
         sum_utxo_values = 0
         if not all([self.inputs, self.outputs]):
             raise TypeError("All inputs and outputs must be provided")
@@ -49,10 +49,9 @@ class TxService:
             for utxo in utxos:
                 sum_utxo_values += utxo.value  # collect the values of UTXOs
                 # verify the signature using previous outputs and the current script_sig
-                print(utxo.script_pub_key, tx_input.script_sig)
                 if not self.verify_input(tx_input, utxo.script_pub_key):
                     raise ValidationError(_("Signature is not valid. Transaction aborted"))
-
+            self.utxos = self.utxos.union(utxos)
         if not self.check_tx_value(sum_utxo_values):  # check the values
             raise ValidationError(_("No unspent output with given previous transaction id and transaction output id"))
 
@@ -62,7 +61,19 @@ class TxService:
         """
         return sum_utxo_values == sum(output.value for output in self.outputs)
 
-    def create_utxo(self, ):
+    def spend_utxos(self):
+        self.validate_transaction()
+        with atomic():
+            self.tx.save()
+            for o in self.outputs:
+                o.transaction = self.tx
+            self.utxos.select_for_update()
+            utxo_ids = [utxo.id for utxo in self.utxos]
+            # NOTE: this is due to impossibility of updating a union query
+            TxOutput.objects.filter(id__in=utxo_ids).update(spent=True)
+            TxOutput.objects.bulk_create(self.outputs, batch_size=20)
+
+    def get_public_key_balance(self, public_key):
         pass
 
     @atomic()

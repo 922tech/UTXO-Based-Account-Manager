@@ -12,6 +12,15 @@ class BaseQuerySet(models.QuerySet):
     Every queryset in the application must be a subclass to this class.
     """
 
+    def first_or_create(self, **kwargs):
+        """
+        Like get_or_create but more thread-safe
+        """
+        first = self.filter(**kwargs).first()
+        if not first:
+            first = self.create(first=first)
+        return first
+
     def soft_delete(self):
         self.update(is_deleted=True)
 
