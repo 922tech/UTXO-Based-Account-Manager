@@ -7,7 +7,7 @@ from django.db.transaction import atomic
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError
 
-from apps.blockchain.models import TxInput, TxOutput, Transaction
+from apps.blockchain.models import TxInput, TxOutput, Transaction, TxStatusChoices
 from apps.common.crypto import DigitalSigner
 from apps.users.models import Account
 
@@ -63,15 +63,25 @@ class TxService:
 
     def spend_utxos(self):
         self.validate_transaction()
-        with atomic():
+        try:
+            with atomic():
+                self.tx.status = TxStatusChoices.COMPLETED
+                self.tx.save()
+                for tx_output in self.outputs:
+                    tx_output.transaction = self.tx
+                for tx_input in self.inputs:
+                    tx_input.transaction = self.tx
+                self.utxos.select_for_update()  # lock the rows to prevent race-condition
+                utxo_ids = [utxo.id for utxo in self.utxos]
+                # NOTE: this is due to impossibility of updating a union query
+                TxOutput.objects.filter(id__in=utxo_ids).update(spent=True)
+                TxOutput.objects.bulk_create(self.outputs, batch_size=20)
+        except Exception as e:
+            # fail the transaction on error
+            # TODO: log the unforeseen error
+            self.tx.status = TxStatusChoices.FAILED
             self.tx.save()
-            for o in self.outputs:
-                o.transaction = self.tx
-            self.utxos.select_for_update()
-            utxo_ids = [utxo.id for utxo in self.utxos]
-            # NOTE: this is due to impossibility of updating a union query
-            TxOutput.objects.filter(id__in=utxo_ids).update(spent=True)
-            TxOutput.objects.bulk_create(self.outputs, batch_size=20)
+            raise
 
     def get_public_key_balance(self, public_key):
         pass

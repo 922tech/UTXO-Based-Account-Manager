@@ -1,23 +1,28 @@
-from rest_framework import serializers
 from rest_framework.serializers import ListSerializer
 
+from apps.blockchain.models import Transaction, TxInput, TxOutput
 from apps.common.serializers import BaseModelSerializer
 
 
 class PostListSerializer(ListSerializer):
     class Meta:
-        # model = Post
-        fields = [
-            'title',
-        ]
+        model = TxInput
+        exclude = ('transaction', 'is_active', 'is_deleted', 'updated_at')
 
 
-#     todo: exclude the content
+class TxOutputSerializer(BaseModelSerializer):
+    class Meta:
+        model = TxOutput
+        fields = ('value', 'script_pub_key')
+        read_only_fields = ('spent',)
 
-class PostSerializer(BaseModelSerializer):
-    # author = serializers.PrimaryKeyRelatedField(queryset=Profile.objects.all())
+
+class TxSerializer(BaseModelSerializer):
+    inputs = TxInputSerializer(many=True,)
+    outputs = TxOutputSerializer(many=True,)
 
     class Meta:
-        fields = '__all__'  # TODO: change this to fields
-        # model = Post
-        list_serializer_class = PostListSerializer
+        exclude = ('is_active', 'is_deleted', 'updated_at')
+        model = Transaction
+        read_only_fields = ('status', 'created_at',)
+

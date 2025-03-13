@@ -1,10 +1,11 @@
-from django.test import TestCase
+from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from apps.blockchain.models import Transaction, TxInput, TxOutput
 from apps.blockchain.services import TxService
 from apps.common.crypto import DigitalSigner
 from apps.common.tests import BaseTestCase
+from apps.common.utils import reverse
 from apps.users.models import Account
 
 
@@ -63,3 +64,42 @@ class TxServiceTestCase(BaseTestCase):
         self.tx_service.spend_utxos()
         utxo_ids = [u.id for u in self.tx_service.utxos]
         self.assertTrue(all(TxOutput.objects.filter(id__in=utxo_ids).values_list('spent', flat=True)))
+
+
+User = get_user_model()
+
+
+class TransactionViewSetTestCase(BaseTestCase):
+    def setUp(self):
+        admin_account = Account.objects.get(uuid=settings.ADMIN_ACCOUNT_UUID)
+        user = User.objects.create_user(username="test1")
+        test_account = Account.objects.create(uuid=settings.ADMIN_ACCOUNT_UUID, user=user)
+        tx = Transaction.objects.first()
+        utxo = tx.outputs.first()
+        signed_tx_input = TxService.sign_tx(
+            TxInput(prev_tx_id=tx.id, vout_id=utxo.id),
+            private_key=admin_account.decrypt_private_key(),
+            public_key=admin_account.public_key
+        )
+
+        self.sample_input = {
+            "inputs": [
+                signed_tx_input.tx_signed_data
+            ],
+            "outputs": [
+                {
+                    "value": utxo.value / 2,
+                    "script_pub_key": test_account.public_key
+                },
+                {
+                    "value": utxo.value / 2,
+                    "script_pub_key": admin_account.public_key
+                }
+            ],
+            "version": 1
+        }
+        self.url = reverse('transactions-list')
+
+    def test_spend_transaction(self):
+        response = self.client.post(self.url, data=self.sample_input, format='json')
+        self.assertCreateSuccess(response)

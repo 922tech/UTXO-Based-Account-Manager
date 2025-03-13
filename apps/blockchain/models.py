@@ -12,12 +12,12 @@ class TxStatusChoices(IntegerChoices):
 
 
 class TxVersionChoices(IntegerChoices):
-    V1 = 1, '1'
+    V1 = 1, 'V1'
 
 
 class Transaction(BaseModel):
-    version = models.IntegerField(choices=TxVersionChoices.choices, default=TxVersionChoices.V1)
-    status = models.IntegerField(choices=TxStatusChoices.choices, default=TxStatusChoices.PENDING)
+    version = models.PositiveIntegerField(choices=TxVersionChoices.choices, default=TxVersionChoices.V1)
+    status = models.PositiveIntegerField(choices=TxStatusChoices.choices, default=TxStatusChoices.PENDING)
 
 
 class TxInput(BaseModel):
@@ -35,13 +35,13 @@ class TxInput(BaseModel):
     def tx_signed_data(self):
         if not self.script_sig:
             raise TypeError("Data is not signed")
-        data = {'prev_tx': self.prev_tx, 'vout': self.vout, 'script_sig': self.script_sig}
+        data = {'prev_tx': self.prev_tx.id, 'vout': self.vout.id, 'script_sig': self.script_sig}
         return data
 
 
 class TxOutput(BaseModel):
     transaction = models.ForeignKey(Transaction, on_delete=models.PROTECT, related_name='outputs')
-    value = models.BigIntegerField()
+    value = models.PositiveBigIntegerField()
     script_pub_key = models.TextField(help_text='the target wallet public key', db_index=True)
     spent = models.BooleanField(default=False)
 

@@ -39,6 +39,8 @@ class DigitalSigner:
         """
         Signs a string using the private key.
         """
+        if not self._private_key:
+            raise TypeError("self._private_key is None")
         value = self.serialize(value)
         message_bytes = value.encode('utf-8')
         message_hash = hashlib.sha256(message_bytes).digest()
@@ -46,10 +48,10 @@ class DigitalSigner:
         return binascii.hexlify(signature).decode()
 
     @staticmethod
-    def serialize(value):
+    def serialize(value) -> str:
         return json.dumps(value)
 
-    def verify(self, value, signature_hex):
+    def verify(self, value, signature_hex: str) -> bool:
         """
         Verifies a signature against a value using the public key.
         """
@@ -64,7 +66,7 @@ class DigitalSigner:
             return False
 
     @classmethod
-    def generate_key_pair(cls):
+    def generate_key_pair(cls) -> dict[str, str]:
         """
         Generates a new key pair.
         """

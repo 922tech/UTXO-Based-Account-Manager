@@ -23,6 +23,7 @@ class Account(BaseModel):
 
     def save(self, *args, **kwargs):
         self._handle_defaults()
+        # NOTE: encryption is handled by a signal so don't worry about it
         return super().save(*args, **kwargs)
 
     def encrypt_private_key(self):

@@ -28,6 +28,9 @@ def create_jwt(uuid=uuid4(), username='user', exp=1):
     return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
 
 
+User = get_user_model()
+
+
 class BaseTestCase(APITestCase):
     client = DrfAPIClient()
     client.force_authenticate(user=None)
@@ -37,9 +40,12 @@ class BaseTestCase(APITestCase):
         for cache in caches.all(initialized_only=True):
             cache.clear()
 
-    def force_login(self, user=None, uuid=None, backend='django.contrib.auth.backends.ModelBackend'):
+    def force_login(self,
+                    user=None,
+                    uuid=None,
+                    backend='django.contrib.auth.backends.ModelBackend') -> tuple[User, str]:
         if not user and not uuid:
-            user, _ = get_user_model().objects.get_or_create(
+            user, _ = User.objects.get_or_create(
                 username='test_user', email='test@test.com',
             )
             uuid = '3f36bdb0-4dc1-430a-ad1e-f63f8af47366'
@@ -81,7 +87,7 @@ class BaseTestCase(APITestCase):
     def _get_view_path(self, response):
         func = resolve(response.wsgi_request.path).func
         view = getattr(func, 'cls', func)
-        return f'{view} at \nFile: "{inspect.getfile(view)}", line {inspect.getsourcelines(view)[1]}'
+        return f'File: "{inspect.getfile(view)}", line {inspect.getsourcelines(view)[1]}, {view} '
 
     def assertSuccess(self, response=None, message=""):
         """
