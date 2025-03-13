@@ -1,4 +1,6 @@
 import uuid
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
 
@@ -8,7 +10,14 @@ from apps.common.models import BaseModel
 User = get_user_model()
 
 
+class AccountManager(models.Manager):
+    def admin_account(self):
+        return self.get(uuid=settings.ADMIN_ACCOUNT_UUID)
+
+
 class Account(BaseModel):
+    objects = AccountManager()
+
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     uuid = models.UUIDField(default=uuid.uuid4, editable=False)
     private_key = models.TextField()
@@ -19,7 +28,6 @@ class Account(BaseModel):
             key_pair = DigitalSigner.generate_key_pair()
             self.private_key = key_pair['private']
             self.public_key = key_pair['public']
-            print('KEYS set')
 
     def save(self, *args, **kwargs):
         self._handle_defaults()

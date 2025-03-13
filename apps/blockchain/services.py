@@ -6,10 +6,31 @@ from django.conf import settings
 from django.db.transaction import atomic
 from django.utils.translation import gettext_lazy as _
 from rest_framework.exceptions import ValidationError
+from typing import Sequence
 
-from apps.blockchain.models import TxInput, TxOutput, Transaction, TxStatusChoices
+from apps.blockchain.models import TxInput, TxOutput, Transaction, TxStatusChoices, FiatTransaction, \
+    FiatTransactionKinds
 from apps.common.crypto import DigitalSigner
 from apps.users.models import Account
+
+
+class PaymentGatewayService:
+    """
+    This class is only a mock for payment gateway logic
+    """
+
+    def __init__(self, fiat_tx: FiatTransaction = None):
+        self.fiat_tx = fiat_tx
+
+    def verify_with_data(self, data):
+        self.fiat_tx.status = TxStatusChoices.COMPLETED
+        self.fiat_tx.metadata = data
+        self.fiat_tx.save()
+        return True
+
+    def request(self):
+        self.fiat_tx.save()
+        return 'http://some-gateway.com/<token>'
 
 
 class TxService:
@@ -61,16 +82,19 @@ class TxService:
         """
         return sum_utxo_values == sum(output.value for output in self.outputs)
 
+    def set_transaction_on(self, tx_seq: Sequence[TxInput | TxOutput]):
+        for tx in tx_seq:
+            tx.transaction = self.tx
+
     def spend_utxos(self):
         self.validate_transaction()
         try:
             with atomic():
                 self.tx.status = TxStatusChoices.COMPLETED
                 self.tx.save()
-                for tx_output in self.outputs:
-                    tx_output.transaction = self.tx
-                for tx_input in self.inputs:
-                    tx_input.transaction = self.tx
+                self.set_transaction_on(self.outputs)
+                self.set_transaction_on(self.inputs)
+
                 self.utxos.select_for_update()  # lock the rows to prevent race-condition
                 utxo_ids = [utxo.id for utxo in self.utxos]
                 # NOTE: this is due to impossibility of updating a union query
@@ -91,6 +115,73 @@ class TxService:
         """
         Coinbase transaction is a transaction that only has outputs and lacks inputs
         """
-        admin_account = Account.objects.get(uuid=settings.ADMIN_ACCOUNT_UUID)
+        admin_account = Account.objects.admin_account()
         self.tx.save()
         TxOutput(transaction=self.tx, value=settings.COINBASE_REWARD, script_pub_key=admin_account.public_key).save()
+
+    @staticmethod
+    def get_admin_account_utxo() -> TxOutput:
+        # TODO: get the admin utxos for a given value using SUM window function
+        admin_public_key = Account.objects.admin_account().public_key
+        return TxOutput.objects.filter(script_pub_key=admin_public_key, spent=False).order_by('id').last()
+
+
+class ExchangeService:
+
+    def __init__(self, fiat_tx: FiatTransaction):
+        self.fiat_tx = fiat_tx
+
+    @staticmethod
+    def get_exchange_rate() -> float:
+        # This mocks getting the exchange rate from the market: crypto/fiat
+        return 1000.0
+
+    @classmethod
+    def crypto_to_fiat(cls, crypto_value: int | float) -> float:
+        return crypto_value * (1 / cls.get_exchange_rate())
+
+    @classmethod
+    def fiat_to_crypto(cls, fiat_value: int | float) -> float:
+        return fiat_value * cls.get_exchange_rate()
+
+    def buy_crypto(self, crypto_value: int | float, public_key: str):
+        """
+        crypto_value: value to buy
+        public_key: public key of buyer's account
+        """
+        if self.fiat_tx.status != TxStatusChoices.COMPLETED:
+            raise ValueError("Transaction is not complete")
+        if self.fiat_tx.kind != FiatTransactionKinds.WITHDRAW:
+            raise ValueError("Transaction kind is not withdraw!")
+
+        admin_utxo = TxService.get_admin_account_utxo()
+        admin_account = Account.objects.admin_account()
+        admin_account.decrypt_private_key()
+        tx_input = TxInput(vout=admin_utxo.id, prev_tx=admin_utxo.transaction)
+        change_value = admin_utxo.value - crypto_value
+        signed_tx_input = TxService.sign_tx(tx_input, admin_utxo.script_pub_key, admin_account.decrypt_private_key())
+        inputs = [signed_tx_input]
+        if change_value < 0:
+            raise ValidationError(_("Requested amount is too high"))
+
+        account_output = TxOutput(value=crypto_value, script_pub_key=public_key)
+        change = TxOutput(value=change_value, script_pub_key=admin_utxo.script_pub_key)
+        tx_service = TxService(inputs=inputs, outputs=[change, account_output])
+        # TODO: implement join coin operation and make it a periodic task
+        self.finalize_exchange(tx_service)
+
+    def finalize_exchange(self, tx_service):
+        with atomic():
+            tx_service.spend_utxos()
+            self.fiat_tx.transaction = tx_service.tx
+            self.fiat_tx.save()
+
+    def sell_crypto(self, tx_service: TxService):
+        """
+        selling crypto is just like spending with NEW_UTXO.public_key = admin_public_key
+        """
+        if self.fiat_tx.status != TxStatusChoices.COMPLETED:
+            raise ValueError("Transaction is not complete")
+        if self.fiat_tx.kind != FiatTransactionKinds.DEPOSIT:
+            raise ValueError("Transaction kind is not deposit!")
+        tx_service.spend_utxos()

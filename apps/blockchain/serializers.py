@@ -4,7 +4,13 @@ from apps.blockchain.models import Transaction, TxInput, TxOutput
 from apps.common.serializers import BaseModelSerializer
 
 
-class PostListSerializer(ListSerializer):
+class TxListSerializer(ListSerializer):
+    # TODO: implement this
+    class Meta:
+        pass
+
+
+class TxInputSerializer(BaseModelSerializer):
     class Meta:
         model = TxInput
         exclude = ('transaction', 'is_active', 'is_deleted', 'updated_at')
