@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from apps.blockchain.models import Transaction, TxInput, TxOutput
+from apps.blockchain.models import Transaction, TxInput, TxOutput, FiatTransaction, FiatTransactionKinds
 from apps.blockchain.services import TxService
 from apps.common.crypto import DigitalSigner
 from apps.common.tests import BaseTestCase
@@ -11,7 +11,7 @@ from apps.users.models import Account
 
 class TxServiceTestCase(BaseTestCase):
     def setUp(self):
-        self.admin_account = Account.objects.get(uuid=settings.ADMIN_ACCOUNT_UUID)
+        self.admin_account = Account.objects.admin_account()
         # Retrieve the coinbase transaction
         self.coinbase_tx = Transaction.objects.filter(outputs__script_pub_key=self.admin_account.public_key).first()
         self.assertIsNotNone(self.coinbase_tx, "Admin account must have a coinbase transaction")
@@ -65,13 +65,15 @@ class TxServiceTestCase(BaseTestCase):
         utxo_ids = [u.id for u in self.tx_service.utxos]
         self.assertTrue(all(TxOutput.objects.filter(id__in=utxo_ids).values_list('spent', flat=True)))
 
+    # TODO: write tests for fail situations as well!!
+
 
 User = get_user_model()
 
 
 class TransactionViewSetTestCase(BaseTestCase):
     def setUp(self):
-        admin_account = Account.objects.get(uuid=settings.ADMIN_ACCOUNT_UUID)
+        admin_account = Account.objects.admin_account()
         user = User.objects.create_user(username="test1")
         test_account = Account.objects.create(uuid=settings.ADMIN_ACCOUNT_UUID, user=user)
         tx = Transaction.objects.first()

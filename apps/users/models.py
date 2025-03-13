@@ -22,6 +22,7 @@ class Account(BaseModel):
     uuid = models.UUIDField(default=uuid.uuid4, editable=False)
     private_key = models.TextField()
     public_key = models.TextField()
+    bank_account = models.CharField(max_length=255)
 
     def _handle_defaults(self):
         if self.created_at is None:
