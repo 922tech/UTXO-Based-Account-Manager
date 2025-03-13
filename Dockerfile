@@ -1,4 +1,4 @@
-FROM python:3.11
+FROM python:3.11-slim
 
 # Set environment variables for non-interactive installs
 ENV PYTHONDONTWRITEBYTECODE=1 \

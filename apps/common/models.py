@@ -2,7 +2,6 @@
 This module includes the models that are supposed to be used by any other apps.
 Do not write models that are related to other models in here.
 """
-from pydantic import BaseModel as PydanticBaseModel
 
 from django.db import models
 
