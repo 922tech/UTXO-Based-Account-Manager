@@ -1,12 +1,12 @@
 services:
-  arka_automl:
+  account_manager:
     image: testproject:latest
-    container_name: arka_automl
+    container_name: account_manager
     build: .
     env_file:
       - .env
     environment:
-      POSTGRES_HOST: automl-sql-db
+      POSTGRES_HOST: sql-db
     volumes:
       - ./:/testproject
     deploy:
@@ -17,7 +17,6 @@ services:
       - /bin/bash
       - -c
       - |
-        pip install django-filter silk
         python manage.py health_check
         python manage.py migrate --no-input
         python manage.py collectstatic --no-input
