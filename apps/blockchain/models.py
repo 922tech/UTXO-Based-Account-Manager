@@ -41,7 +41,7 @@ class TxInput(BaseModel):
 
 class TxOutput(BaseModel):
     transaction = models.ForeignKey(Transaction, on_delete=models.PROTECT, related_name='outputs')
-    value = models.PositiveBigIntegerField()
+    value = models.DecimalField(max_digits=30, decimal_places=10)
     script_pub_key = models.TextField(help_text='the target wallet public key', db_index=True)
     spent = models.BooleanField(default=False)
 
@@ -49,3 +49,21 @@ class TxOutput(BaseModel):
         indexes = [
             HashIndex(fields=['script_pub_key'])
         ]
+
+
+class FiatTransactionChoices(IntegerChoices):
+    WITHDRAW = 0, 'withdraw'
+    DEPOSIT = 1, 'deposit'
+
+
+class FiatTransaction(BaseModel):
+    """
+    This model keeps track(logs) of exchanging cryptocurrency with fiat currency
+    These transactions are executed by a 3rd-party service e.g. a payment gateway
+    """
+    value = models.DecimalField(max_digits=30, decimal_places=10)
+    account = models.ForeignKey('users.Account', on_delete=models.PROTECT, related_name='transactions', db_index=True)
+    status = models.PositiveIntegerField(choices=TxStatusChoices.choices, default=TxStatusChoices.PENDING)
+    metadata = models.JSONField(default=dict)
+    transaction = models.ForeignKey(Transaction, on_delete=models.PROTECT, related_name='transactions')
+    kind = models.BooleanField(choices=FiatTransactionChoices.choices)
