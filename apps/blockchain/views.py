@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.blockchain import tasks
 from apps.blockchain.models import Transaction, TxInput, TxOutput, FiatTransaction, FiatTransactionKinds
 from apps.blockchain.serializers import TxSerializer, FiatTxSerializer, PaymentGwEventSerializer
 from apps.blockchain.services import TxService, PaymentGatewayService, ExchangeService
@@ -15,6 +16,7 @@ class TransactionViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.
     serializer_class = TxSerializer
     # since list of the transactions must be cached on the client side, limit-offset pagination is the fittest
     pagination_class = LimitedLimitOffsetPagination
+
     def get_tx_service(self):
         data, _ = self.get_validated_data(raise_exception=True)
         inputs = [TxInput(**input_data) for input_data in data['inputs']]
@@ -39,15 +41,22 @@ class TransactionViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.
 
     @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path="crypto-balance")
     def crypto_balance(self, request, *args, **kwargs):
-        return Response(data={'balance': TxService.get_public_key_balance(request.user.account.public_key)})
+        """
+        Calculates balance of the user's account
+        This is a heavy operation, so it is enqueued to prevent bottlenecks on the database server
+        """
+        result = tasks.get_crypto_balance.apply_async(args=(request.user.account.public_key,))
+        task_result = result.get()
+        return Response(data={'balance': task_result})
 
     @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
-    def fiat_balance(self, request, *args, **kwargs):  # Incomplete
-        balance = FiatTransaction.objects.calc_account_balance(self.request.user.account.id)
-        return Response(data={'balance': balance})
+    def fiat_balance(self, request, *args, **kwargs):
+        result = tasks.get_fiat_balance.apply_async(args=(request.user.account.id,))
+        task_result = result.get()
+        return Response(data={'balance': task_result})
 
     @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated], serializer_class=TxSerializer)
-    def withdraw(self, request, *args, **kwargs):  # Incomplete
+    def withdraw(self, request, *args, **kwargs):
         """Converts UTXO to Fiat. This endpoint acts like spending UTXOs but the user gets paid afterward"""
         tx_service = self.get_tx_service()
         exchange_service = ExchangeService(FiatTransaction(account=request.user.account.id))

@@ -1,6 +1,7 @@
+from rest_framework import serializers
 from rest_framework.serializers import ListSerializer
 
-from apps.blockchain.models import Transaction, TxInput, TxOutput
+from apps.blockchain.models import Transaction, TxInput, TxOutput, FiatTransaction
 from apps.common.serializers import BaseModelSerializer
 
 
@@ -31,4 +32,17 @@ class TxSerializer(BaseModelSerializer):
         exclude = ('is_active', 'is_deleted', 'updated_at')
         model = Transaction
         read_only_fields = ('status', 'created_at',)
+
+
+class FiatTxSerializer(BaseModelSerializer):
+    class Meta:
+        model = FiatTransaction
+        fields = ('value', 'created_at', 'status', 'tracking_code', 'kind')
+        read_only_fields = ('created_at', 'status', 'tracking_code', 'kind')
+        write_once_fields = ('value',)
+
+
+class PaymentGwEventSerializer(BaseModelSerializer):
+    tracking_code = serializers.CharField()
+    metadata = serializers.DictField()
 
