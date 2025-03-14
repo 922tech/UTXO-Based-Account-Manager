@@ -37,15 +37,12 @@ def check_success(exception: Exception):
     return check_success_decorator
 
 
-class CachePrefix:
-    FILE = 'f'
-
-
-
 class Cache:
     """
     This class is the place of overriding the Django's built-in cache methods
+    For each type of object write a prefix here
     """
+    Account = 'A-'
 
     def __init__(self, name='default'):
         self._cache = caches[name]
@@ -95,15 +92,18 @@ class Cache:
     def delete(self, key, **kwargs):
         return self._cache.delete(key, **kwargs)
 
-    def get_key(self, prefix: str, id_: Any):
-        return f'{getattr(CachePrefix, prefix)}-{id_}'
-
     @check_success(CacheWriteFailed("setting value was unsuccessful"))
     def set_for_id(self, prefix: str, id_: Any, value, **kwargs):
+        """
+        Given a prefix and ID and the object, create a cache record
+        """
         return self.set(f'{prefix}-{id_}', value, **kwargs)
 
     @check_success(CacheWriteFailed("setting value was unsuccessful"))
     def get_for_id(self, prefix: str, id_: Any, **kwargs):
+        """
+        Given a prefix and ID(which can be any non-complex object like str or int)  , fetch the cached record
+        """
         key = f'{prefix}-{id_}'
         return self.get(key, **kwargs)
 

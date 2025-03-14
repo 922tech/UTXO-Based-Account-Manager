@@ -65,6 +65,12 @@ class FiatTransaction(BaseModel):
     account = models.ForeignKey('users.Account', on_delete=models.PROTECT, related_name='transactions', db_index=True)
     status = models.PositiveIntegerField(choices=TxStatusChoices.choices, default=TxStatusChoices.PENDING)
     metadata = models.JSONField(default=dict)
-    transaction = models.ForeignKey(Transaction, on_delete=models.PROTECT, related_name='transactions', null=True,
-                                    blank=True)
+    tracking_code = models.TextField(blank=True, null=True)
+    transaction = models.OneToOneField(Transaction, on_delete=models.PROTECT, related_name='transactions', null=True,
+                                       blank=True)
     kind = models.BooleanField(choices=FiatTransactionKinds.choices)
+
+    class Meta:
+        indexes = [
+            HashIndex(fields=['tracking_code'])
+        ]

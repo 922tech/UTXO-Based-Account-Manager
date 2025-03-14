@@ -1,44 +1,45 @@
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from apps.blockchain.models import Transaction, TxInput, TxOutput, FiatTransaction, FiatTransactionKinds
-from apps.blockchain.services import TxService
+from apps.blockchain.models import Transaction, TxInput, TxOutput, FiatTransaction, FiatTransactionKinds, \
+    TxStatusChoices
+from apps.blockchain.services import TxService, ExchangeService
 from apps.common.crypto import DigitalSigner
 from apps.common.tests import BaseTestCase
 from apps.common.utils import reverse
 from apps.users.models import Account
 
 
+def prepare_tx_service(self):
+    self.admin_account = Account.objects.admin_account()
+    # Retrieve the coinbase transaction
+    self.coinbase_tx = Transaction.objects.filter(outputs__script_pub_key=self.admin_account.public_key).first()
+    self.assertIsNotNone(self.coinbase_tx, "Admin account must have a coinbase transaction")
+    # Retrieve the UTXO from the coinbase transaction
+    self.utxo = TxOutput.objects.filter(transaction=self.coinbase_tx, spent=False).first()
+    self.assertIsNotNone(self.utxo, "Coinbase transaction must have an unspent output")
+    self.tx_output = TxOutput(value=self.utxo.value, script_pub_key=self.admin_account.public_key)
+    self.private_key = self.admin_account.decrypt_private_key()
+    self.public_key = self.admin_account.public_key
+    self.signer = DigitalSigner(public_key_hex=self.public_key, private_key_hex=self.private_key)
+    # Create a new transaction input using the UTXO
+    self.tx_input = TxInput(prev_tx_id=self.utxo.transaction.id, vout_id=self.utxo.id,
+                            transaction_id=self.coinbase_tx.id)
+    # sing the input to imitate a real input
+    TxService.sign_tx(self.tx_input, private_key=self.private_key, public_key=self.public_key).save()
+    self.tx_service = TxService(inputs=[self.tx_input], outputs=[self.tx_output])
+
+
 class TxServiceTestCase(BaseTestCase):
     def setUp(self):
-        self.admin_account = Account.objects.admin_account()
-        # Retrieve the coinbase transaction
-        self.coinbase_tx = Transaction.objects.filter(outputs__script_pub_key=self.admin_account.public_key).first()
-        self.assertIsNotNone(self.coinbase_tx, "Admin account must have a coinbase transaction")
-
-        # Retrieve the UTXO from the coinbase transaction
-        self.utxo = TxOutput.objects.filter(transaction=self.coinbase_tx, spent=False).first()
-        self.assertIsNotNone(self.utxo, "Coinbase transaction must have an unspent output")
-
-        self.tx_output = TxOutput(value=self.utxo.value, script_pub_key=self.admin_account.public_key)
-
-        self.private_key = self.admin_account.decrypt_private_key()
-        self.public_key = self.admin_account.public_key
-        self.signer = DigitalSigner(public_key_hex=self.public_key, private_key_hex=self.private_key)
-
-        # Create a new transaction input using the UTXO
-        self.tx_input = TxInput(prev_tx_id=self.utxo.transaction.id, vout_id=self.utxo.id,
-                                transaction_id=self.coinbase_tx.id)
-        # sing the input to imitate a real input
-        TxService.sign_tx(self.tx_input, self.private_key, self.public_key).save()
-        self.tx_service = TxService(inputs=[self.tx_input], outputs=[self.tx_output])
+        prepare_tx_service(self)
 
     def test_sign_and_verify_tx(self):
         # Sign the transaction input
         tx_input = TxInput(prev_tx_id=self.utxo.transaction.id, vout_id=self.utxo.id,
                            transaction_id=self.coinbase_tx.id)
         tx_input.save()
-        signed_input = self.tx_service.sign_tx(tx_input, self.private_key, self.public_key)
+        signed_input = self.tx_service.sign_tx(tx_input, private_key=self.private_key, public_key=self.public_key)
         self.assertIsNotNone(signed_input.script_sig, "Transaction input must be signed")
 
         # Verify the transaction input
@@ -69,6 +70,26 @@ class TxServiceTestCase(BaseTestCase):
 
 
 User = get_user_model()
+
+
+class ExchangeServiceTestCase(BaseTestCase):
+    def setUp(self):
+        self.tx_service = TxService
+        user = User.objects.create_user(username="test1")
+        self.user_account = Account.objects.create(user=user)
+        self.fiat_tx = FiatTransaction(account=self.user_account, status=TxStatusChoices.COMPLETED, value=2000)
+        prepare_tx_service(self)
+
+    def test_buy_crypto(self):
+        self.fiat_tx.kind = FiatTransactionKinds.DEPOSIT
+        self.fiat_tx.save()
+        self.exchange_service = ExchangeService(self.fiat_tx)
+        self.exchange_service.buy_crypto(self.user_account.public_key)
+        self.assertTrue(TxOutput.objects.filter(script_pub_key=self.user_account.public_key).exists())
+
+    def test_sell_crypto(self):
+        fiat_tx = ExchangeService.sell_crypto(self.tx_service, self.user_account)
+        self.assertTrue(fiat_tx.transaction)
 
 
 class TransactionViewSetTestCase(BaseTestCase):

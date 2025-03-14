@@ -23,11 +23,9 @@ class BaseViewSet(GenericViewSet):
             **context
         }
 
-    def get_validated_data(self, raise_exception=False, get_serializer=False):
+    def get_validated_data(self, raise_exception=False):
         serializer = self.get_serializer(data=self.request.data)
         serializer.is_valid(raise_exception=raise_exception)
-        if not get_serializer:
-            return serializer.validated_data, serializer
         return serializer.validated_data, serializer
 
 

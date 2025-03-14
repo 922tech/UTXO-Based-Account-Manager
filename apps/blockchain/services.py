@@ -33,14 +33,20 @@ class PaymentGatewayService:
         self.fiat_tx.save()
         return 'http://some-gateway.com/<token>'
 
-    def charge_account(self, value, crypto_transaction_id):
-        # self.fiat_tx.account.bank_account
-        FiatTransaction(account=Account.objects.admin_account(),
-                        value=value,
-                        kind=FiatTransactionKinds.WITHDRAW,
-                        transaction=crypto_transaction_id,
-                        status=TxStatusChoices.COMPLETED).save()
+    @staticmethod
+    def transfer_to_account(bank_account) -> bool:
         return True
+
+    @classmethod
+    def charge_account(cls, value, crypto_transaction_id, account):
+        if cls.transfer_to_account(account.bank_account):
+            fiat_tx = FiatTransaction.objects.create(
+                            account=account,
+                            value=value,
+                            kind=FiatTransactionKinds.WITHDRAW,
+                            transaction_id=crypto_transaction_id,
+                            status=TxStatusChoices.COMPLETED)
+            return cls(fiat_tx)
 
 
 class TxService:
@@ -57,7 +63,7 @@ class TxService:
             self.tx = Transaction()
 
     @staticmethod
-    def sign_tx(tx_input: TxInput, private_key, public_key) -> TxInput:
+    def sign_tx(tx_input: TxInput,* , private_key, public_key) -> TxInput:
         signer = DigitalSigner(private_key_hex=private_key, public_key_hex=public_key)
         tx_input.script_sig = signer.sign(tx_input.tx_data)
         return tx_input
@@ -141,6 +147,7 @@ class ExchangeService:
 
     def __init__(self, fiat_tx: FiatTransaction):
         self.fiat_tx = fiat_tx
+        self.tx_service = None
 
     @staticmethod
     def get_exchange_rate() -> float:
@@ -161,47 +168,48 @@ class ExchangeService:
         public_key: public key of buyer's account
         """
         self._check_is_complete()
+        if self.fiat_tx.value is None:
+            raise TypeError("self.fiat_tx.value is None!")
+
         if self.fiat_tx.kind != FiatTransactionKinds.DEPOSIT:
             raise ValueError("Transaction kind is not DEPOSIT!")
         crypto_value = self.fiat_to_crypto(float(self.fiat_tx.value))
         admin_utxo = TxService.get_admin_account_utxo()
         admin_account = Account.objects.admin_account()
         admin_account.decrypt_private_key()
-        tx_input = TxInput(vout=admin_utxo.id, prev_tx=admin_utxo.transaction)
-        change_value = admin_utxo.value - crypto_value
-        signed_tx_input = TxService.sign_tx(tx_input, admin_utxo.script_pub_key, admin_account.decrypt_private_key())
+        tx_input = TxInput(vout=admin_utxo, prev_tx=admin_utxo.transaction)
+        change_value = float(admin_utxo.value) - crypto_value
+        signed_tx_input = TxService.sign_tx(tx_input, private_key=admin_account.private_key, public_key=admin_utxo.script_pub_key)
         inputs = [signed_tx_input]
         if change_value < 0:
             raise ValidationError(_("Requested amount is too high"))
 
         account_output = TxOutput(value=crypto_value, script_pub_key=public_key)
         change = TxOutput(value=change_value, script_pub_key=admin_utxo.script_pub_key)
-        tx_service = TxService(inputs=inputs, outputs=[change, account_output])
+        self.tx_service = TxService(inputs=inputs, outputs=[change, account_output])
         # TODO: implement join coin operation and make it a periodic task
-        self._finalize_exchange(tx_service)
+        self._execute_exchange(self.tx_service)
 
-    def _finalize_exchange(self, tx_service) -> None:
+    def _execute_exchange(self, tx_service) -> None:
         with atomic():
             tx_service.spend_utxos()
             self.fiat_tx.transaction = tx_service.tx
             self.fiat_tx.save()
 
-    def sell_crypto(self, tx_service: TxService) -> None:
+    @classmethod
+    def sell_crypto(cls, tx_service: TxService, account: 'Account') -> FiatTransaction:
         """
-        selling crypto is just like spending with NEW_UTXO.public_key = admin_public_key
-        call this once the payment gatewat transaction completed
+        selling crypto is just like spending with NEW_UTXO.public_key = admin_public_key except that the seller gets
+        paid at the end
         """
-        self._check_is_complete()
-        if self.fiat_tx.kind != FiatTransactionKinds.WITHDRAW:
-            raise ValueError("Transaction kind is not WITHDRAW!")
-        self._finalize_exchange(tx_service)
         with atomic():
-            tx_service.spend_utxos()
             admin_public_key = Account.objects.admin_account().public_key
-            sold_crypto = sum(
-                o.value for o in filter(lambda x: x.script_pub_key == admin_public_key, tx_service.outputs))
-            sold_crypto_fiat = self.crypto_to_fiat(sold_crypto)
-            PaymentGatewayService(self.fiat_tx).charge_account(sold_crypto_fiat, tx_service.tx.id)
+            sold_crypto = sum(  # the ones that goes to admin account are the ones being sold
+                float(o.value) for o in filter(lambda x: x.script_pub_key == admin_public_key, tx_service.outputs)
+            )
+            tx_service.spend_utxos()
+            sold_crypto_fiat_equivalent = cls.crypto_to_fiat(sold_crypto)
+            return PaymentGatewayService.charge_account(sold_crypto_fiat_equivalent, tx_service.tx.id, account).fiat_tx
 
     def _check_is_complete(self):
         if self.fiat_tx.status != TxStatusChoices.COMPLETED:

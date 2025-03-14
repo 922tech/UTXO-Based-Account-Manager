@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
 
+from apps.common.cache import Cache
 from apps.common.crypto import Encryptor, DigitalSigner
 from apps.common.models import BaseModel
 
@@ -12,7 +13,14 @@ User = get_user_model()
 
 class AccountManager(models.Manager):
     def admin_account(self):
-        return self.get(uuid=settings.ADMIN_ACCOUNT_UUID)
+        cache = Cache()
+        admin_uuid = settings.ADMIN_ACCOUNT_UUID
+        admin_account = cache.get_for_id(Cache.Account, admin_uuid, default=0)
+        if not admin_account:
+            admin_account = self.get(uuid=admin_uuid)
+            cache.set_for_id(Cache.Account, admin_uuid, value=admin_uuid)
+
+        return admin_account
 
 
 class Account(BaseModel):
