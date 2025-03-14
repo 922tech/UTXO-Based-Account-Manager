@@ -2,7 +2,7 @@ from rest_framework import serializers
 from rest_framework.serializers import ListSerializer
 
 from apps.blockchain.models import Transaction, TxInput, TxOutput, FiatTransaction
-from apps.common.serializers import BaseModelSerializer
+from apps.common.serializers import BaseModelSerializer, BaseSerializer
 
 
 class TxListSerializer(ListSerializer):
@@ -42,7 +42,7 @@ class FiatTxSerializer(BaseModelSerializer):
         write_once_fields = ('value',)
 
 
-class PaymentGwEventSerializer(BaseModelSerializer):
+class PaymentGwEventSerializer(BaseSerializer):
     tracking_code = serializers.CharField()
     metadata = serializers.DictField()
 
