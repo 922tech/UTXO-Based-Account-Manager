@@ -194,6 +194,7 @@ class ExchangeService:
         with atomic():
             tx_service.spend_utxos()
             self.fiat_tx.transaction = tx_service.tx
+            self.fiat_tx.spent = True
             self.fiat_tx.save()
 
     @classmethod

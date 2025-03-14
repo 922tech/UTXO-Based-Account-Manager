@@ -1,8 +1,9 @@
 from django.contrib.postgres.indexes import HashIndex
 from django.db import models
 from django.db.models import IntegerChoices
+from django.db.models import Sum
 
-from apps.common.models import BaseModel
+from apps.common.models import BaseModel, BaseManager
 
 
 class TxStatusChoices(IntegerChoices):
@@ -56,11 +57,21 @@ class FiatTransactionKinds(IntegerChoices):
     DEPOSIT = 1, 'deposit'
 
 
+class FiatTxManager(BaseManager):
+    def calc_account_balance(self, account_id):
+        calc_result = self.filter(account_id=account_id, spent=False, status=TxStatusChoices.COMPLETED).aggregate(
+            balance=Sum(output_field=models.DecimalField())
+        )
+        return float(calc_result['balance']) or 0
+
+
 class FiatTransaction(BaseModel):
     """
     This model keeps track(logs) of exchanging cryptocurrency with fiat currency
     These transactions are executed by a 3rd-party service e.g. a payment gateway
     """
+    objects = FiatTxManager()
+
     value = models.DecimalField(max_digits=30, decimal_places=10)
     account = models.ForeignKey('users.Account', on_delete=models.PROTECT, related_name='transactions', db_index=True)
     status = models.PositiveIntegerField(choices=TxStatusChoices.choices, default=TxStatusChoices.PENDING)
@@ -69,6 +80,12 @@ class FiatTransaction(BaseModel):
     transaction = models.OneToOneField(Transaction, on_delete=models.PROTECT, related_name='transactions', null=True,
                                        blank=True)
     kind = models.BooleanField(choices=FiatTransactionKinds.choices)
+    spent = models.BooleanField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if self.status != FiatTransactionKinds.DEPOSIT and self.spent is not None:
+            raise ValueError(f"only the DEPOSIT transactions can have self.spent attribute")
+        return super().save(*args, **kwargs)
 
     class Meta:
         indexes = [

@@ -20,7 +20,7 @@ services:
         python manage.py health_check
         python manage.py migrate --no-input
         python manage.py collectstatic --no-input
-        gunicorn --bind 0.0.0.0:${PORT:-8000} --env DJANGO_SETTINGS_MODULE=testproject.settings arka.wsgi:application --log-level debug --workers=2
+        gunicorn --bind 0.0.0.0:${PORT:-8000} --env DJANGO_SETTINGS_MODULE=testproject.settings testproject.wsgi:application --log-level debug --workers=2
     restart: unless-stopped
     depends_on:
       - sql-db
